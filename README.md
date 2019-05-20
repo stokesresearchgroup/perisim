@@ -3,7 +3,7 @@
 A peristaltic table simulation.
 
 This package simulates a square grid of peristaltic cells beneath a flexible surface. 
-Each cell is modelled as a gaussian disturbance in the flexible surface that can increase or decrease it's amplitude. 
+Each cell is modelled as a gaussian disturbance in the flexible surface. Each cell can actuate to increase or decrease its amplitude. 
 Objects on the surface then roll down the gradients of the surface.
 
 The simulation can randomly vary its parameters in order to allow for controller optimization using the radical envelope-of-noise hypothesis 
