@@ -8,4 +8,7 @@ setup(name='perisim',
       author_email='r.m.mckenzie@ed.ac.uk',
       license='MIT',
       packages=['perisim'],
+      install_requires=[
+          'pytorch',
+      ],
       zip_safe=False)

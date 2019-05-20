@@ -1,13 +1,8 @@
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
-import torch.nn.functional as F
 import math
-import matplotlib
-import time
 import random
-import numpy as np
-from mayavi import mlab
 
 class PeriSim(nn.Module):
     '''Main class for the peristaltic table simulation'''
@@ -168,6 +163,7 @@ class PeriSim(nn.Module):
         return grid, gridSize
 
     def visualise(self, xmin = None, ymin = None, xmax = None, ymax = None, cmap=None):
+        from mayavi import mlab
         if xmin is None:
             xmin = -self.spacing
         if ymin is None:
@@ -187,10 +183,3 @@ class PeriSim(nn.Module):
 
         pts = mlab.points3d(self.cargoPos.data[0,0], self.cargoPos.data[0,1], objH.data[0,2]+25, 50, scale_factor=1, color=(1,1,1))
         mlab.show()
-        # A = 10
-        # print(self.cargoPos.data[0,0])
-        # u, v = np.mgrid[0:2*np.pi:20j, 0:np.pi:10j]
-        # x = (A*2*np.cos(u)*np.sin(v)) + self.cargoPos.data[0,0]
-        # y = (A*2*np.sin(u)*np.sin(v)) #+ self.cargoPos.data[0,1]
-        # z = (A*np.cos(v)) + A*3
-        # ax.plot_surface(x, y, z, color="r", zorder = -1000)
