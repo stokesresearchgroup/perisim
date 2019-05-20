@@ -1,5 +1,5 @@
 # perisim
-###Description
+### Description
 A peristaltic table simulation.
 
 This package simulates a square grid of peristaltic cells beneath a flexible surface. 
