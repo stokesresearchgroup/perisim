@@ -8,8 +8,8 @@ class PeriSim(nn.Module):
     '''Main class for the peristaltic table simulation'''
 
     def __init__(self, x, y, cargo_pos, amplitude=5., spacing=80, stddev=40,
-                 time_step=0.01, variance=0.2, cargo_vel=None, height=1.,
-                 cargo_weight=None, g=9800, friction=0.01, act_force=100,
+                 time_step=0.01, variance=0., cargo_vel=None, height=0.,
+                 cargo_mass=None, g=9800, friction=0.01, act_force=100,
                  act_time=0.1, gpu=False):
         self.defDict = {"x" : x, "y" : y, "amplitude" : amplitude, "spacing" : spacing, "stddev" : stddev, "time_step" : time_step,
          "variance" : variance, "height" : height, "g" : g, "friction" : friction, "act_force" : act_force, "act_time" : act_time}
@@ -46,10 +46,10 @@ class PeriSim(nn.Module):
         else:
             self.cargo_vel = Variable(torch.Tensor(cargo_vel), requires_grad=False).type(self.dtype)
 
-        if cargo_weight is None:
-            self.cargo_weight = Variable(torch.zeros(self.cargo_pos.size()[0]), requires_grad=False).type(self.dtype) + 10
+        if cargo_mass is None:
+            self.cargo_weight = Variable(torch.zeros(self.cargo_pos.size()[0]), requires_grad=False).type(self.dtype) + (0.01 * self.g)
         else:
-            self.cargo_weight = Variable(torch.Tensor(cargo_weight), requires_grad=False).type(self.dtype)
+            self.cargo_weight = Variable(torch.Tensor(cargo_mass), requires_grad=False).type(self.dtype) * self.g
 
     def perturb(self, x):
         '''Perturbs a variable within the noise level'''
