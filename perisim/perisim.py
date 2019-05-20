@@ -7,50 +7,49 @@ import random
 class PeriSim(nn.Module):
     '''Main class for the peristaltic table simulation'''
 
-    def __init__(self, x, y, cargoPos, amplitude = 5., spacing = 80, stdDev = 40,
-                 timeStep = 0.01, variance = 0.2, cargoVel = None, height = 1.,
-                 cargoWeight = None, g = 9800, friction = 0.01, actForce = 100,
-                 actTime = 0.1, gpu = False):
-        self.defDict = {"x" : x, "y" : y, "amplitude" : amplitude, "spacing" : spacing, "stdDev" : stdDev, "timeStep" : timeStep,
-         "variance" : variance, "height" : height, "g" : g, "friction" : friction, "actForce" : actForce, "actTime" : actTime}
+    def __init__(self, x, y, cargo_pos, amplitude=5., spacing=80, stddev=40,
+                 time_step=0.01, variance=0.2, cargo_vel=None, height=1.,
+                 cargo_weight=None, g=9800, friction=0.01, act_force=100,
+                 act_time=0.1, gpu=False):
+        self.defDict = {"x" : x, "y" : y, "amplitude" : amplitude, "spacing" : spacing, "stddev" : stddev, "time_step" : time_step,
+         "variance" : variance, "height" : height, "g" : g, "friction" : friction, "act_force" : act_force, "act_time" : act_time}
         if gpu:
-             self.dtype = torch.cuda.FloatTensor
+            self.dtype = torch.cuda.FloatTensor
         else:
             self.dtype = torch.FloatTensor
-        self.size = (x,y)
+        self.size = (x, y)
         self.variance = variance
         self.spacing = self.perturb(spacing)
-        #print(self.size)
-        tG = Variable(torch.ones(x,y), requires_grad=False).type(self.dtype)
-        self.actuationPos = torch.nonzero(tG).type(self.dtype)*self.spacing
+        tG = Variable(torch.ones(x, y), requires_grad=False).type(self.dtype)
+        self.actuation_pos = torch.nonzero(tG).type(self.dtype) * self.spacing
         self.amplitude = self.perturb(amplitude)
-        if height == None:
+        if height is None:
             height = amplitude
         self.height = self.perturb(height)
-        self.cellHeights = Variable(torch.zeros(x*y,1), requires_grad=False).type(self.dtype)+self.height
-        self.ts = timeStep
-        self.actForce = actForce
-        #self.a = (1/stdDev*math.sqrt(2*math.pi))
-        self.b = self.perturb(2*(stdDev**2))
-        self.cargoPos = Variable(torch.Tensor(cargoPos), requires_grad=True).type(self.dtype)
-        self.grads = Variable(torch.zeros(self.cargoPos.size()), requires_grad=False).type(self.dtype)
+        self.cell_heights = Variable(torch.zeros(x * y, 1), requires_grad=False).type(self.dtype) + self.height
+        self.ts = time_step
+        self.act_force = act_force
+        self.b = self.perturb(2 * (stddev ** 2))
+        self.cargo_pos = Variable(torch.Tensor(cargo_pos), requires_grad=True).type(self.dtype)
+        self.grads = Variable(torch.zeros(self.cargo_pos.size()), requires_grad=False).type(self.dtype)
         self.g = self.perturb(g)
         self.friction = self.perturb(friction)
-        #Repeat Variables for multiplication
-        self.actPosRepeat = self.actuationPos.repeat(self.cargoPos.size()[0],1).type(self.dtype)
-        self.cellHeightRepeat = self.cellHeights.repeat(self.cargoPos.size()[0],1).type(self.dtype)
-        self.time = 0.
-        self.actTime = self.perturb(actTime/timeStep)
-        self.forceApplied = Variable(torch.zeros(self.cargoPos.size()), requires_grad=False).type(self.dtype)
-        if cargoVel == None:
-            self.cargoVel = Variable(torch.zeros(self.cargoPos.size()), requires_grad=False).type(self.dtype)
-        else:
-            self.cargoVel = Variable(torch.Tensor(cargoVel), requires_grad=False).type(self.dtype)
 
-        if cargoWeight == None:
-            self.cargoWeight = Variable(torch.zeros(self.cargoPos.size()[0]), requires_grad=False).type(self.dtype)+10
+        #Repeat Variables for multiplication
+        self.act_pos_repeat = self.actuation_pos.repeat(self.cargo_pos.size()[0], 1).type(self.dtype)
+        self.cell_height_repeat = self.cell_heights.repeat(self.cargo_pos.size()[0], 1).type(self.dtype)
+        self.time = 0.
+        self.act_time = self.perturb(act_time / time_step)
+        self.force_applied = Variable(torch.zeros(self.cargo_pos.size()), requires_grad=False).type(self.dtype)
+        if cargo_vel is None:
+            self.cargo_vel = Variable(torch.zeros(self.cargo_pos.size()), requires_grad=False).type(self.dtype)
         else:
-            self.cargoWeight = Variable(torch.Tensor(cargoWeight), requires_grad=False).type(self.dtype)
+            self.cargo_vel = Variable(torch.Tensor(cargo_vel), requires_grad=False).type(self.dtype)
+
+        if cargo_weight is None:
+            self.cargo_weight = Variable(torch.zeros(self.cargo_pos.size()[0]), requires_grad=False).type(self.dtype) + 10
+        else:
+            self.cargo_weight = Variable(torch.Tensor(cargo_weight), requires_grad=False).type(self.dtype)
 
     def perturb(self, x):
         '''Perturbs a variable within the noise level'''
@@ -63,18 +62,17 @@ class PeriSim(nn.Module):
         if int(x)>=self.size[0] or int(y)>=self.size[1]:
             print("Linbot (%d, %d) not in array" % (x, y))
             return
-        self.cellHeights[(x*self.size[0] + y)] = self.height + direction*self.amplitude
-        self.actPosRepeat = self.actuationPos.repeat(self.cargoPos.size()[0],1)
-        self.cellHeightRepeat = self.cellHeights.repeat(self.cargoPos.size()[0],1)
-        actin = Variable(torch.Tensor([x,y]).repeat(self.cargoPos.size()[0],1))
+        self.cell_heights[(x * self.size[0] + y)] = self.height + direction * self.amplitude
+        self.act_pos_repeat = self.actuation_pos.repeat(self.cargo_pos.size()[0], 1)
+        self.cell_height_repeat = self.cell_heights.repeat(self.cargo_pos.size()[0], 1)
+        actin = Variable(torch.Tensor([x,y]).repeat(self.cargo_pos.size()[0], 1))
         pinged = torch.nonzero(torch.sum(torch.abs(self.nearest_cell() - actin), 1) == 0)
         if len(pinged.size()) > 0:
-            self.forceApplied.data[pinged.data.view(-1)] = self.actForce
-        #print("Actuate (%d,%d) by %d" % (x,y,direction))
+            self.force_applied.data[pinged.data.view(-1)] = self.act_force
 
     def nearest_cell(self):
         '''Finds the closes peristaltic cell'''
-        return torch.round(self.cargoPos/self.spacing)
+        return torch.round(self.cargo_pos / self.spacing)
 
     def update(self):
         '''Updates the surface  of the table and the cargo'''
@@ -83,87 +81,76 @@ class PeriSim(nn.Module):
 
         angle = self.grads.atan()
 
-        #v = v + at     a = F/m   F=Rsin(angle)-drag   R = -g*m*cos(angle)   v = v+gtcos(angle)sin(angle)
-        drag = self.friction*self.cargoVel
-        self.cargoVel = self.cargoVel+(-(self.g+self.forceApplied)*self.ts*angle.cos()*angle.sin())-drag
-        self.cargoPos = self.cargoPos + self.cargoVel*self.ts
-        self.forceApplied.data = self.forceApplied.data - self.actForce/self.actTime
-        self.forceApplied.data[self.forceApplied.data<0] = 0
+        drag = self.friction*self.cargo_vel
+        self.cargo_vel = self.cargo_vel + (-(self.g + self.force_applied) * self.ts * angle.cos() * angle.sin()) - drag
+        self.cargo_pos = self.cargo_pos + self.cargo_vel * self.ts
+        self.force_applied.data = self.force_applied.data - self.act_force / self.act_time
+        self.force_applied.data[self.force_applied.data < 0] = 0
 
     def scale_tensor(self, tensor, scale):
         '''Increases size of tensor by scale by copying entries to the next
         entry (rather than the end) e.g scaleTensor([1,2,3],2) > [1,1,2,2,3,3]'''
-        newTensor = tensor.view((tensor.size()[0],1,tensor.size()[1])).repeat(1, scale, 1).view((-1, tensor.size()[1]))
-        return newTensor
+        new_tensor = tensor.view((tensor.size()[0], 1, tensor.size()[1])).repeat(1, scale, 1).view((-1, tensor.size()[1]))
+        return new_tensor
 
     def partial_sum(self, tensor, length):
         '''Reduces a vecotr to length by summing over size/length
         e.g partialSum([1,2,3,4],2) > [3,7]'''
-        newTensor = torch.sum(tensor.view(length, -1), dim=1).view(-1,1)
-        return newTensor
+        new_tensor = torch.sum(tensor.view(length, -1), dim=1).view(-1, 1)
+        return new_tensor
 
     def update_grad(self):
         '''Update gradients based on actuations'''
-        cargoPosRepeat = self.scale_tensor(self.cargoPos, self.actuationPos.size()[0]).type(self.dtype)
-        dist = cargoPosRepeat-self.actPosRepeat.type(self.dtype)
-        cargoHeights = self.cellHeightRepeat*torch.prod(torch.exp(-(dist * dist)/self.b), dim = 1).view(-1,1).type(self.dtype)
-        gradsSplit = (-2*dist/self.b)*cargoHeights.view(cargoHeights.size()[0],1).expand(cargoHeights.size()[0],2).type(self.dtype)
-        gradsX = self.partial_sum(gradsSplit[:, 0].contiguous(), self.cargoVel.size()[0]).type(self.dtype)
-        gradsY = self.partial_sum(gradsSplit[:, 1].contiguous(), self.cargoVel.size()[0]).type(self.dtype)
-        self.grads = torch.cat((gradsX,gradsY), dim=1).type(self.dtype)
+        cargo_pos_repeat = self.scale_tensor(self.cargo_pos, self.actuation_pos.size()[0]).type(self.dtype)
+        dist = cargo_pos_repeat-self.act_pos_repeat.type(self.dtype)
+        cargo_heights = self.cell_height_repeat * torch.prod(torch.exp(-(dist * dist) / self.b), dim=1).view(-1, 1).type(self.dtype)
+        grads_split = (-2*dist/self.b)*cargo_heights.view(cargo_heights.size()[0], 1).expand(cargo_heights.size()[0], 2).type(self.dtype)
+        grads_x = self.partial_sum(grads_split[:, 0].contiguous(), self.cargo_vel.size()[0]).type(self.dtype)
+        grads_y = self.partial_sum(grads_split[:, 1].contiguous(), self.cargo_vel.size()[0]).type(self.dtype)
+        self.grads = torch.cat((grads_x,grads_y), dim=1).type(self.dtype)
         perturb = self.grads.data*((torch.rand(self.grads.size())*2)-1)
         self.grads.data = self.grads.data+(self.variance*perturb)
-        # self.heights = torch.sum(torch.prod(gaussians,1).view(-1, actuationPos.size()[0]), dim=1)
-        # print("gaussians")
-        # print(gaussians)
-        # print("heights")
-        # print(self.heights)
-        #
-        # for i in range(cargoPos.size()[0]):
-        #    self.heights[i].backward(retain_graph=True)
-        #    self.grads.data[i] = cargoPos.grad.data[i]
+
     def update_weight(self):
         '''Updates the weights on the four cells surrounding each object'''
-        gridspace = self.cargoPos/self.spacing
+        gridspace = self.cargo_pos / self.spacing
         #Make array of all laden cells
         maxXY = torch.ceil(gridspace)
         minXY = torch.floor(gridspace)
-        maxXminY = torch.cat((maxXY[:,0].contiguous().view(-1,1),minXY[:,1].contiguous().view(-1,1)), dim = 1)
-        minXmaxY = torch.cat((minXY[:,0].contiguous().view(-1,1),maxXY[:,1].contiguous().view(-1,1)), dim = 1)
-        weightPos = torch.cat((maxXY, maxXminY, minXY, minXmaxY), dim = 0)
+        maxXminY = torch.cat((maxXY[:, 0].contiguous().view(-1, 1), minXY[:, 1].contiguous().view(-1, 1)), dim=1)
+        minXmaxY = torch.cat((minXY[:, 0].contiguous().view(-1, 1), maxXY[:, 1].contiguous().view(-1, 1)), dim=1)
+        weight_pos = torch.cat((maxXY, maxXminY, minXY, minXmaxY), dim=0)
         #Find distance from the opposite side of the table from each cell to the ball (in grid space)
-        weightDiffs = torch.abs(weightPos-gridspace.repeat(4,1))
-        weightDiffs = 1-weightDiffs
+        weight_diffs = torch.abs(weight_pos-gridspace.repeat(4, 1))
+        weight_diffs = 1-weight_diffs
         #Multiply both distances to give a proportion of weight on one cell
-        weightDiffs = torch.prod(weightDiffs, dim=1)#
+        weight_diffs = torch.prod(weight_diffs, dim=1)
         #Multiply by the weight of each cargo to give the weight on each cell
-        weightDistribution = weightDiffs*self.cargoWeight.repeat(4)
-        weights = torch.cat((weightPos*self.spacing, weightDistribution.view(-1, 1)), dim = 1)
+        weight_distribution = weight_diffs*self.cargo_weight.repeat(4)
+        weights = torch.cat((weight_pos*self.spacing, weight_distribution.view(-1, 1)), dim=1)
         return weights
 
 
     def heights(self, start, end, spacing = 1):
         '''Calculate height grid based on actuations'''
-        gridSize = (math.ceil(end[0]-start[0]/spacing), math.ceil(end[1]-start[1]/spacing))
-        tG = Variable(torch.ones(gridSize[0],gridSize[1]), requires_grad=False)
+        grid_size = (math.ceil(end[0]-start[0]/spacing), math.ceil(end[1]-start[1]/spacing))
+        tG = Variable(torch.ones(grid_size[0], grid_size[1]), requires_grad=False)
         offset = torch.Tensor([start[0], start[1]])
-        testGrid = torch.nonzero(tG).float()
-        testGrid.data = (testGrid.data*spacing) + offset
-        # for i in range(gridSize[1]):
-        #     for j in range(gridSize[0]):
-        #         testGrid[(i*gridSize[0])+j] = torch.Tensor([(j*spacing)+start[0], (i*spacing)+start[1]])
-        testGridRepeat = self.scale_tensor(testGrid, self.actuationPos.size()[0])
-        actPosGridRepeat = self.actuationPos.repeat(testGrid.size()[0],1)
-        cellHeightGridRepeat = self.cellHeights.repeat(testGrid.size()[0],1)
+        test_grid = torch.nonzero(tG).float()
+        test_grid.data = (test_grid.data*spacing) + offset
+        test_grid_repeat = self.scale_tensor(test_grid, self.actuation_pos.size()[0])
+        act_pos_grid_repeat = self.actuation_pos.repeat(test_grid.size()[0], 1)
+        cell_height_grid_repeat = self.cell_heights.repeat(test_grid.size()[0], 1)
 
-        dist = testGridRepeat-actPosGridRepeat.float()
-        splitHeights = cellHeightGridRepeat*torch.prod(torch.exp(-(dist * dist)/self.b), dim = 1).view(-1,1)
-        gridHeights = self.partial_sum(splitHeights, testGrid.size()[0])
-        grid = torch.cat((testGrid, gridHeights), dim =1)
-        return grid, gridSize
+        dist = test_grid_repeat-act_pos_grid_repeat.float()
+        split_heights = cell_height_grid_repeat*torch.prod(torch.exp(-(dist * dist)/self.b), dim=1).view(-1, 1)
+        grid_heights = self.partial_sum(split_heights, test_grid.size()[0])
+        grid = torch.cat((test_grid, grid_heights), dim=1)
+        return grid, grid_size
 
-    def visualise(self, xmin = None, ymin = None, xmax = None, ymax = None, cmap=None):
+    def visualise(self, xmin=None, ymin=None, xmax=None, ymax=None):
         from mayavi import mlab
+
         if xmin is None:
             xmin = -self.spacing
         if ymin is None:
@@ -173,13 +160,13 @@ class PeriSim(nn.Module):
         if ymax is None:
             ymax = (self.size[1])*self.spacing
 
-        grid, gSize = self.heights((xmin,ymin), (xmax,ymax))
+        grid, g_size = self.heights((xmin, ymin), (xmax, ymax))
 
-        surf = mlab.mesh(grid.data[:,0].contiguous().view(gSize).numpy(),
-                               grid.data[:,1].contiguous().view(gSize).numpy(),
-                               grid.data[:,2].contiguous().view(gSize).numpy(), color=(1,0.5,0))
+        mlab.mesh(grid.data[:, 0].contiguous().view(g_size).numpy(),
+                               grid.data[:, 1].contiguous().view(g_size).numpy(),
+                               grid.data[:, 2].contiguous().view(g_size).numpy(), color=(1, 0.5, 0))
 
-        objH, _ = self.heights((self.cargoPos.data[0,0], self.cargoPos.data[0,1]), (self.cargoPos.data[0,0]+1, self.cargoPos.data[0,1]+1))
+        obj_h, _ = self.heights((self.cargo_pos.data[0, 0], self.cargo_pos.data[0, 1]), (self.cargo_pos.data[0, 0] + 1, self.cargo_pos.data[0, 1] + 1))
 
-        pts = mlab.points3d(self.cargoPos.data[0,0], self.cargoPos.data[0,1], objH.data[0,2]+25, 50, scale_factor=1, color=(1,1,1))
+        mlab.points3d(self.cargo_pos.data[0, 0], self.cargo_pos.data[0, 1], obj_h.data[0, 2] + 25, 50, scale_factor=1, color=(1, 1, 1))
         mlab.show()
