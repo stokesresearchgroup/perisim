@@ -131,13 +131,13 @@ class PeriSim(nn.Module):
         return weights
 
 
-    def heights(self, start, end, spacing = 1):
+    def heights(self, start, end, resolution=1):
         '''Calculate height grid based on actuations'''
-        grid_size = (math.ceil(end[0]-start[0]/spacing), math.ceil(end[1]-start[1]/spacing))
+        grid_size = (math.ceil(end[0]-start[0]/resolution), math.ceil(end[1]-start[1]/resolution))
         tG = Variable(torch.ones(grid_size[0], grid_size[1]), requires_grad=False)
         offset = torch.Tensor([start[0], start[1]])
         test_grid = torch.nonzero(tG).float()
-        test_grid.data = (test_grid.data*spacing) + offset
+        test_grid.data = (test_grid.data*resolution) + offset
         test_grid_repeat = self.scale_tensor(test_grid, self.actuation_pos.size()[0])
         act_pos_grid_repeat = self.actuation_pos.repeat(test_grid.size()[0], 1)
         cell_height_grid_repeat = self.cell_heights.repeat(test_grid.size()[0], 1)
@@ -148,7 +148,7 @@ class PeriSim(nn.Module):
         grid = torch.cat((test_grid, grid_heights), dim=1)
         return grid, grid_size
 
-    def visualise(self, xmin=None, ymin=None, xmax=None, ymax=None):
+    def visualise(self, xmin=None, ymin=None, xmax=None, ymax=None, resolution=1):
         from mayavi import mlab
 
         if xmin is None:
@@ -160,7 +160,7 @@ class PeriSim(nn.Module):
         if ymax is None:
             ymax = (self.size[1])*self.spacing
 
-        grid, g_size = self.heights((xmin, ymin), (xmax, ymax))
+        grid, g_size = self.heights((xmin, ymin), (xmax, ymax), resolution=resolution)
 
         mlab.mesh(grid.data[:, 0].contiguous().view(g_size).numpy(),
                                grid.data[:, 1].contiguous().view(g_size).numpy(),
