@@ -133,7 +133,7 @@ class PeriSim(nn.Module):
 
     def heights(self, start, end, resolution=1):
         '''Calculate height grid based on actuations'''
-        grid_size = (math.ceil(end[0]-start[0]/resolution), math.ceil(end[1]-start[1]/resolution))
+        grid_size = (math.ceil((end[0]-start[0])/resolution), math.ceil((end[1]-start[1])/resolution))
         tG = Variable(torch.ones(grid_size[0], grid_size[1]), requires_grad=False)
         offset = torch.Tensor([start[0], start[1]])
         test_grid = torch.nonzero(tG).float()
@@ -146,10 +146,14 @@ class PeriSim(nn.Module):
         split_heights = cell_height_grid_repeat*torch.prod(torch.exp(-(dist * dist)/self.b), dim=1).view(-1, 1)
         grid_heights = self.partial_sum(split_heights, test_grid.size()[0])
         grid = torch.cat((test_grid, grid_heights), dim=1)
+
         return grid, grid_size
 
-    def visualise(self, xmin=None, ymin=None, xmax=None, ymax=None, resolution=1):
+    def visualise(self, xmin=None, ymin=None, xmax=None, ymax=None,
+                  object_diam=50, resolution=20, steps=0, steps_each_update=5,
+                  delay = None, control=None):
         from mayavi import mlab
+        from pyface.timer.api import Timer
 
         if xmin is None:
             xmin = -self.spacing
@@ -162,11 +166,30 @@ class PeriSim(nn.Module):
 
         grid, g_size = self.heights((xmin, ymin), (xmax, ymax), resolution=resolution)
 
-        mlab.mesh(grid.data[:, 0].contiguous().view(g_size).numpy(),
+        mesh = mlab.mesh(grid.data[:, 0].contiguous().view(g_size).numpy(),
                                grid.data[:, 1].contiguous().view(g_size).numpy(),
                                grid.data[:, 2].contiguous().view(g_size).numpy(), color=(1, 0.5, 0))
 
         obj_h, _ = self.heights((self.cargo_pos.data[0, 0], self.cargo_pos.data[0, 1]), (self.cargo_pos.data[0, 0] + 1, self.cargo_pos.data[0, 1] + 1))
 
-        mlab.points3d(self.cargo_pos.data[0, 0], self.cargo_pos.data[0, 1], obj_h.data[0, 2] + 25, 50, scale_factor=1, color=(1, 1, 1))
+        obj = mlab.points3d(self.cargo_pos.data[0, 0], self.cargo_pos.data[0, 1], obj_h.data[0, 2] + object_diam/4, object_diam, scale_factor=1, color=(1, 1, 1))
+
+        if (steps>0):
+            if delay is None:
+                delay = int(self.ts*steps_each_update*1000)
+            @mlab.animate(delay=delay)
+            def anim():
+                for i in range(steps):
+                    for j in range(steps_each_update):
+                        if control is not None:
+                            control.update()
+                        self.update()
+                    new_heights = self.heights((xmin, ymin), (xmax, ymax), resolution=resolution)[0][:,2].contiguous().view(g_size).numpy()
+                    mesh.mlab_source.scalars = new_heights
+                    obj.mlab_source.set(x=self.cargo_pos.data[0].tolist()[0],
+                                        y=self.cargo_pos.data[0].tolist()[1],
+                                        z=obj_h.data[0].tolist()[2] + object_diam/4)
+                    yield
+            anim()
+
         mlab.show()

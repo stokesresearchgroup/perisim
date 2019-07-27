@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='perisim',
-      version='0.42',
+      version='0.44',
       description='A package for simulating peristaltic tables',
       long_description='''
       A peristaltic table simulation.
