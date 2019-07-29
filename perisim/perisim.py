@@ -7,8 +7,8 @@ import random
 class PeriSim(nn.Module):
     '''Main class for the peristaltic table simulation'''
 
-    def __init__(self, x, y, cargo_pos, amplitude=5., spacing=80, stddev=40,
-                 time_step=0.01, variance=0., cargo_vel=None, height=0.,
+    def __init__(self, x, y, cargo_pos, amplitude=20., spacing=100., stddev=50.,
+                 time_step=0.01, variance=0., cargo_vel=None, height=50.,
                  cargo_mass=None, g=9800, friction=0.01, act_force=100,
                  act_time=0.1, gpu=False):
         self.defDict = {"x" : x, "y" : y, "amplitude" : amplitude, "spacing" : spacing, "stddev" : stddev, "time_step" : time_step,
@@ -62,13 +62,14 @@ class PeriSim(nn.Module):
         if int(x)>=self.size[0] or int(y)>=self.size[1]:
             print("Linbot (%d, %d) not in array" % (x, y))
             return
-        self.cell_heights[(x * self.size[0] + y)] = self.height + direction * self.amplitude
-        self.act_pos_repeat = self.actuation_pos.repeat(self.cargo_pos.size()[0], 1)
-        self.cell_height_repeat = self.cell_heights.repeat(self.cargo_pos.size()[0], 1)
-        actin = Variable(torch.Tensor([x,y]).repeat(self.cargo_pos.size()[0], 1))
-        pinged = torch.nonzero(torch.sum(torch.abs(self.nearest_cell() - actin), 1) == 0)
-        if len(pinged.size()) > 0:
-            self.force_applied.data[pinged.data.view(-1)] = self.act_force
+        if self.cell_heights[(x * self.size[0] + y)] != self.height + direction * self.amplitude:
+            self.cell_heights[(x * self.size[0] + y)] = self.height + direction * self.amplitude
+            self.act_pos_repeat = self.actuation_pos.repeat(self.cargo_pos.size()[0], 1)
+            self.cell_height_repeat = self.cell_heights.repeat(self.cargo_pos.size()[0], 1)
+            actin = Variable(torch.Tensor([x,y]).repeat(self.cargo_pos.size()[0], 1))
+            pinged = torch.nonzero(torch.sum(torch.abs(self.nearest_cell() - actin), 1) == 0)
+            if len(pinged.size()) > 0:
+                self.force_applied.data[pinged.data.view(-1)] = self.act_force
 
     def nearest_cell(self):
         '''Finds the closes peristaltic cell'''
@@ -149,9 +150,16 @@ class PeriSim(nn.Module):
 
         return grid, grid_size
 
+    def cargo_heights(self):
+        cargo_pos_repeat = self.scale_tensor(self.cargo_pos, self.actuation_pos.size()[0]).type(self.dtype)
+        dist = cargo_pos_repeat-self.act_pos_repeat.type(self.dtype)
+        cargo_heights_split = self.cell_height_repeat * torch.prod(torch.exp(-(dist * dist)/self.b), dim=1).view(-1, 1).type(self.dtype)
+        cargo_heights = self.partial_sum(cargo_heights_split, self.cargo_pos.size()[0])
+        return torch.t(cargo_heights)[0]
+
     def visualise(self, xmin=None, ymin=None, xmax=None, ymax=None,
-                  object_diam=50, resolution=20, steps=0, steps_each_update=5,
-                  delay = None, control=None):
+                  object_diam=50, resolution=20, animate=False, steps_each_update=5,
+                  control=None, speed=1, record=False):
         from mayavi import mlab
         from pyface.timer.api import Timer
 
@@ -166,30 +174,42 @@ class PeriSim(nn.Module):
 
         grid, g_size = self.heights((xmin, ymin), (xmax, ymax), resolution=resolution)
 
+        f = mlab.figure(size=(1600, 720))
         mesh = mlab.mesh(grid.data[:, 0].contiguous().view(g_size).numpy(),
                                grid.data[:, 1].contiguous().view(g_size).numpy(),
-                               grid.data[:, 2].contiguous().view(g_size).numpy(), color=(1, 0.5, 0))
+                               grid.data[:, 2].contiguous().view(g_size).numpy(),
+                               color=(1, 0.5, 0), figure=f)
 
-        obj_h, _ = self.heights((self.cargo_pos.data[0, 0], self.cargo_pos.data[0, 1]), (self.cargo_pos.data[0, 0] + 1, self.cargo_pos.data[0, 1] + 1))
+        # obj_h, _ = self.heights((self.cargo_pos.data[0, 0],
+        #                          self.cargo_pos.data[0, 1]),
+        #                         (self.cargo_pos.data[0, 0] + 1,
+        #                          self.cargo_pos.data[0, 1] + 1))
+        cargo_heights = self.cargo_heights()
 
-        obj = mlab.points3d(self.cargo_pos.data[0, 0], self.cargo_pos.data[0, 1], obj_h.data[0, 2] + object_diam/4, object_diam, scale_factor=1, color=(1, 1, 1))
+        cargo = mlab.points3d(self.cargo_pos.data[:, 0],
+                            self.cargo_pos.data[:, 1],
+                            cargo_heights.data + object_diam/4,
+                            [object_diam for i in range(cargo_heights.size()[0])],
+                            scale_factor=1, color=(1, 1, 1), figure=f)
 
-        if (steps>0):
-            if delay is None:
-                delay = int(self.ts*steps_each_update*1000)
+        if animate:
+            delay = int((self.ts*steps_each_update*1000)/speed)
             @mlab.animate(delay=delay)
             def anim():
-                for i in range(steps):
+                while True:
                     for j in range(steps_each_update):
                         if control is not None:
                             control.update()
                         self.update()
                     new_heights = self.heights((xmin, ymin), (xmax, ymax), resolution=resolution)[0][:,2].contiguous().view(g_size).numpy()
                     mesh.mlab_source.scalars = new_heights
-                    obj.mlab_source.set(x=self.cargo_pos.data[0].tolist()[0],
-                                        y=self.cargo_pos.data[0].tolist()[1],
-                                        z=obj_h.data[0].tolist()[2] + object_diam/4)
+                    new_cargo_heights = self.cargo_heights()
+                    cargo.mlab_source.set(x=self.cargo_pos.data[:,0].tolist(),
+                                        y=self.cargo_pos.data[:,1].tolist(),
+                                        z=(new_cargo_heights.data + object_diam/4).tolist())
+                    #f.scene.render()
                     yield
+            f.scene.movie_maker.record = record
             anim()
 
         mlab.show()
