@@ -80,3 +80,11 @@ where direction is:
 1 for extension
 -1 for contraction
 ```
+To create a 3D visualsation of the system:
+```
+sim.visualise()
+```
+For an animated visualisation set the animate keyword to True and add an end time in seconds:
+```
+sim.visualise(animate=True, end_time=60)
+```
